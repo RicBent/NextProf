@@ -1,0 +1,57 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": "./build",
+      "args": [],
+      "group": "build",
+      "problemMatcher": ["$gcc"],
+      "detail": "Builds NextProf",
+      "presentation": {
+        "showReuseMessage": false,
+        "close": true
+      }
+    },
+    {
+      "label": "Clean",
+      "type": "shell",
+      "command": "./build",
+      "args": ["clean"],
+      "group": "build",
+      "problemMatcher": ["$gcc"],
+      "detail": "Cleans NextProf build artifacts",
+      "presentation": {
+        "showReuseMessage": false,
+        "close": true
+      }
+    },
+    {
+      "label": "Host",
+      "type": "shell",
+      "command": "./serve",
+      "args": [],
+      "group": "build",
+      "problemMatcher": ["$gcc"],
+      "detail": "Starts the NextProf host server",
+      "presentation": {
+        "showReuseMessage": false,
+        "close": true
+      }
+    },
+	{
+      "label": "Host (QR)",
+      "type": "shell",
+      "command": "./serve",
+      "args": ["-qr"],
+      "group": "build",
+      "problemMatcher": ["$gcc"],
+      "detail": "Starts the NextProf host server with QR codes shown",
+      "presentation": {
+        "showReuseMessage": false,
+        "close": true
+      }
+    }
+  ]
+}

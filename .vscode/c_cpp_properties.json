@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "name": "dkp",
+            "includePath": [
+                "/opt/devkitpro/libctru/include/**"
+            ],
+            "compilerPath": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++11",
+            "intelliSenseMode": "gcc-arm"
+        }
+    ],
+    "version": 4
+}

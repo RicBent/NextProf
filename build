@@ -1,0 +1,38 @@
+#!/bin/bash
+
+set -e
+
+cd "$(dirname "$0")"
+
+
+if [[ $1 == "clean" ]]; then
+    echo -e "\033[32m[=== sysmodule ===]\033[0m"
+    cd sysmodule
+    make clean
+    cd ..
+
+    echo -e "\033[32m[=== App ===]\033[0m"
+    cd app
+    make clean
+    cd ..
+
+    exit 0
+fi
+
+
+if [[ $(uname) == "Darwin" ]]; then
+    NPROC=$(sysctl -n hw.ncpu)
+else
+    NPROC=$(nproc)
+fi
+
+
+echo -e "\033[32m[=== sysmodule ===]\033[0m"
+cd sysmodule
+make -j$NPROC
+cd ..
+
+echo -e "\033[32m[=== App ===]\033[0m"
+cd app
+make -j$NPROC
+cd ..

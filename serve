@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import socket
+import datetime
+import threading
+import argparse
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Optional
+
+LOG_FILE_PATH: Optional[str] = None
+
+LISTEN_IP = '0.0.0.0'
+LISTEN_PORT = 8008
+
+HOST_IP = '0.0.0.0'
+HOST_PORT = 8009
+
+class HttpRequestHandler(BaseHTTPRequestHandler):
+    ROUTES = {
+        '/sysmodule/nextprof_sys.cia': 'sysmodule/output/nextprof_sys.cia',
+        '/sysmodule/code.bin': 'sysmodule/output/nextprof_sys.code.bin',
+        '/sysmodule/exheader.bin': 'sysmodule/output/nextprof_sys.exheader.bin',
+
+        '/app/nextprof_app.cia': 'app/output/nextprof_app.cia',
+    }
+
+    def do_GET(self):
+        if self.path not in self.ROUTES:
+            self.send_error(404)
+            return
+
+        file_path = self.ROUTES[self.path]
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+        except FileNotFoundError:
+            self.send_error(404)
+
+def log_udp_loop(stop_event):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind((LISTEN_IP, LISTEN_PORT))
+    sock.settimeout(0.25)  # Allow periodic checking of stop_event
+
+    while not stop_event.is_set():
+        try:
+            data, addr = sock.recvfrom(2048)
+
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            message = data.decode(errors='replace').rstrip()
+
+            line = f'{timestamp} {addr[0]}:{addr[1]} | {message}'
+
+            print(line)
+
+            if LOG_FILE_PATH:
+                with open(LOG_FILE_PATH, 'a') as f:
+                    f.write(line + '\n')
+        except socket.timeout:
+            continue  # Check stop_event again
+    
+    sock.close()
+
+
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # Doesn't have to be reachable
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    finally:
+        s.close()
+    return ip
+
+
+def show_qr_codes():
+    ip = get_local_ip()
+
+    url = f'http://{ip}:{HOST_PORT}/app/nextprof_app.cia'
+    print(f'App ({url}):')
+    os.system(f'qrencode -t ANSI256UTF8 "{url}"')
+
+    url = f'http://{ip}:{HOST_PORT}/sysmodule/nextprof_sys.cia'
+    print(f'Sysmodule ({url}):')
+    os.system(f'qrencode -t ANSI256UTF8 "{url}"')
+
+
+def main():
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+    parser = argparse.ArgumentParser(description='NextProf Host')
+    parser.add_argument('-qr', action='store_true', help='Show QR codes for downloading the app and sysmodule')
+    args = parser.parse_args()
+
+    if args.qr:
+        show_qr_codes()
+
+    print(f'HTTP serving on http://{HOST_IP}:{HOST_PORT}/')
+    print(f'UDP listening on {LISTEN_IP}:{LISTEN_PORT}')
+    print('Press Ctrl+C to stop.\n')
+
+    server = HTTPServer((HOST_IP, HOST_PORT), HttpRequestHandler)
+    
+    # Create stop event for clean shutdown
+    stop_event = threading.Event()
+    
+    # Start HTTP server in a separate thread
+    http_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    http_thread.start()
+    
+    # Start UDP server in a separate thread
+    udp_thread = threading.Thread(target=log_udp_loop, args=(stop_event,), daemon=True)
+    udp_thread.start()
+
+    try:
+        # Keep main thread alive
+        while True:
+            threading.Event().wait(1)
+    except KeyboardInterrupt:
+        print('\nShutting down...')
+        stop_event.set()
+        server.shutdown()
+        udp_thread.join(timeout=5)
+
+    sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()
