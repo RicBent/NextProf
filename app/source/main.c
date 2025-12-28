@@ -58,11 +58,10 @@ int main()
 			break;
 	}
 
-	if (launched)
+	if (launched && R_FAILED(launchResult))
 	{
-		printf("PID %lu (result: %08X, %s)\n\n", launchPid, launchResult, rStr(launchResult));
-		printf("Press START to exit.\n");
-
+		printf("Failed to launch profiler sysmodule: %08X\n", launchResult);
+		
 		while (aptMainLoop())
 		{
 			gspWaitForVBlank();
