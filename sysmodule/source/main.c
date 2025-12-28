@@ -5,8 +5,8 @@
 
 #include <3ds.h>
 
-#include "csvc.h"
 #include "log.h"
+#include "luma.h"
 
 
 #define TRY(r, label, format, ...)          \
@@ -68,14 +68,22 @@ Result openProcessByName(const char *name, Handle *h)
     return 0;
 }
 
+void socShutdown()
+{
+    socExit();
+    free(socBuf);
+    socBuf = NULL;
+}
+
 union 
 {
     struct
     {
-        Handle debugeeProcessHandle;
+        Handle notification;
         Handle perfCounterOverflowEvent;
+        Handle debugeeProcess;
     };
-    Handle wait[2];
+    Handle wait[3];
 } handles;
 
 
@@ -137,11 +145,67 @@ void PMC_setInterrupt()
     TERMINATE_IF_R_FAILED(r, "PMC set interrupt failed");
 }
 
-void socShutdown()
+void PMC_init()
 {
-    socExit();
-    free(socBuf);
-    socBuf = NULL;
+    Result r;
+
+    r = svcCreateEvent(&handles.perfCounterOverflowEvent, RESET_ONESHOT);
+    TERMINATE_IF_R_FAILED(r, "Creating perf counter overflow event failed: %08X", r);
+    r = svcClearEvent(handles.perfCounterOverflowEvent);
+    TERMINATE_IF_R_FAILED(r, "Clearing perf counter overflow event failed: %08X", r);
+
+    PMC_aquireControl();
+    atexit(PMC_releaseControl);
+
+    PMC_useVirtualCounter(false);
+
+    r = svcBindInterrupt(0x78, handles.perfCounterOverflowEvent, 0, false);
+    TERMINATE_IF_R_FAILED(r, "Binding perf counter interrupt failed: %08X", r);
+
+    PMC_setInterrupt();
+    PMC_resetInterrupt();
+}
+
+void PMC_exit()
+{
+    Result r;
+
+    r = svcUnbindInterrupt(0x78, handles.perfCounterOverflowEvent);
+    TERMINATE_IF_R_FAILED(r, "Unbinding perf counter interrupt failed: %08X", r);
+}
+
+void notificationsInit()
+{
+    Result r;
+    
+    r = srvEnableNotification(&handles.notification);
+    TERMINATE_IF_R_FAILED(r, "Enabling notifications failed: %08X", r);
+
+    r = srvSubscribe(0x1000);   // Luma: Next application debugged by force
+    TERMINATE_IF_R_FAILED(r, "Subscribing to notification 0x1000 failed: %08X", r);
+}
+
+void notificationsExit()
+{
+    Result r;
+
+    r = srvUnsubscribe(0x1000);
+    if (R_FAILED(r))
+        LOG_ERROR("Unsubscribing from notification 0x1000 failed: %08X", r);
+    svcCloseHandle(handles.notification);
+}
+
+static bool terminationRequested = false;
+
+void handleDebugNextApplication()
+{
+    LOG_INFO("Debuggee application launched");
+}
+
+void handlePerfCounterOverflow()
+{
+    LOG_INFO("Perf counter overflow event received");
+    PMC_resetInterrupt();
 }
 
 int main()
@@ -188,33 +252,44 @@ int main()
     }
     atexit(pmDbgExit);
 
-    r = svcCreateEvent(&handles.perfCounterOverflowEvent, RESET_ONESHOT);
-    TERMINATE_IF_R_FAILED(r, "Creating perf counter overflow event failed: %08X", r);
-    r = svcClearEvent(handles.perfCounterOverflowEvent);
-    TERMINATE_IF_R_FAILED(r, "Clearing perf counter overflow event failed: %08X", r);
+    notificationsInit();
+    atexit(notificationsExit);
 
-    PMC_aquireControl();
-    atexit(PMC_releaseControl);
+    PMC_init();
+    atexit(PMC_exit);
 
-    PMC_useVirtualCounter(false);
+    r = PMDBG_LumaDebugNextApplicationByForce(true);
+    TERMINATE_IF_R_FAILED(r, "Enabling Luma debug next application by force failed: %08X", r);
 
-    r = svcBindInterrupt(0x78, handles.perfCounterOverflowEvent, 0, false);
-    TERMINATE_IF_R_FAILED(r, "Binding perf counter interrupt failed: %08X", r);
-
-    PMC_setInterrupt();
-    PMC_resetInterrupt();
-
-    while (true)
+    s32 idx = 0;
+    while (!terminationRequested)
     {
-        LOG_INFO("Waiting for perf counter overflow event...");
-        r = svcWaitSynchronization(handles.perfCounterOverflowEvent, -1LL);
-        TERMINATE_IF_R_FAILED(r, "Waiting for perf counter overflow event failed: %08X", r);
-        LOG_INFO("Perf counter overflow event signaled!");
-        PMC_resetInterrupt();
-    }
+        LOG_INFO("Waiting for synchronization event...");
+        r = svcWaitSynchronizationN(&idx, handles.wait, 2, false, -1LL);
+        TERMINATE_IF_R_FAILED(r, "Waiting for synchronization failed: %08X", r);
 
-    r = svcUnbindInterrupt(0x78, handles.perfCounterOverflowEvent);
-    TERMINATE_IF_R_FAILED(r, "Unbinding perf counter interrupt failed: %08X", r);
+        LOG_INFO("Synchronization event %d signaled", idx);
+
+        if (idx == 0)
+        {
+            u32 notificationId = 0;
+            r = srvReceiveNotification(&notificationId);
+            TERMINATE_IF_R_FAILED(r, "Receiving notification failed: %08X", r);
+
+            LOG_INFO("Received notification 0x%08X", notificationId);
+
+            if (notificationId == 0x100)
+                terminationRequested = true;
+            else if (notificationId == 0x1000)
+                handleDebugNextApplication();
+            else
+                LOG_ERROR("Unknown notification ID 0x%08X", notificationId);
+        }
+        else if (idx == 1)
+            handlePerfCounterOverflow();
+        else 
+            LOG_ERROR("Unknown synchronization index %d", idx);
+    }
 
     return 0;
 }
