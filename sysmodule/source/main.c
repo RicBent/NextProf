@@ -9,36 +9,33 @@
 #include "luma.h"
 
 
-#define TRY(r, label, format, ...)          \
-    if (R_FAILED((r)))                      \
-    {                                       \
-        LOG_ERROR(format, ##__VA_ARGS__);   \
-        goto label;                         \
-    }
-
-#define TERMINATE_IF_R_FAILED(r, format, ...)    \
-    if (R_FAILED((r)))                      \
-    {                                       \
-        LOG_ERROR(format, ##__VA_ARGS__);   \
-        exit(-1);                           \
+#define TERMINATE_IF_R_FAILED(r, format, ...)   \
+    if (R_FAILED((r)))                          \
+    {                                           \
+        LOG_ERROR(format, ##__VA_ARGS__);       \
+        exit(-1);                               \
     }
 
 
-const u64 SYS_TITLE_ID      = 0x00040130091A8C02ULL;
 
-#define SAMPLE_CYCLE_COUNT 100000000
+#define SAMPLE_CYCLE_COUNT 1000000000
 
 #define SOC_ALIGN       0x1000
 #define SOC_BUFFERSIZE  0x100000
 u32* socBuf = NULL;
 
+const char* processExitReasons[] = {
+    "exit",
+    "terminate",
+    "debug terminate",
+};
 
-Result requestExit()
-{
-    LOG_INFO("Requesting exit");
-    return PMAPP_TerminateTitle(SYS_TITLE_ID, 1000000000LL);
-}
-
+const char* threadExitReasons[] = {
+    "exit",
+    "terminate",
+    "process exit",
+    "process terminate",
+};
 
 Result openProcessByName(const char *name, Handle *h)
 {
@@ -280,7 +277,7 @@ void handleNotification()
     r = srvReceiveNotification(&notificationId);
     TERMINATE_IF_R_FAILED(r, "Receiving notification failed: %08X", r);
 
-    LOG_INFO("Received notification 0x%08X", notificationId);
+    LOG_TRACE("Received notification 0x%08X", notificationId);
 
     if (notificationId == 0x100)
         terminationRequested = true;
@@ -331,7 +328,7 @@ void handleDebugeeProcessEvent()
     {
         if (info.exception.type == EXCEVENT_ATTACH_BREAK)
         {
-            LOG_INFO("Attached");
+            LOG_INFO("Debuggee process attach break");
             attached = true;
             PMC_resetInterrupt();
         }
@@ -356,9 +353,15 @@ void handleDebugeeProcessEvent()
             LOG_WARNING("Unhandled debuggee process exception (type: %d)", info.exception.type);
         }
     }
+    else if (info.type == DBGEVENT_ATTACH_PROCESS)
+    {
+        LOG_INFO("Debuggee process attached (process ID: %u)", info.attach_process.process_id);
+        LOG_INFO(" Program ID: %016lX", info.attach_process.program_id);
+        LOG_INFO(" Name: %.8s", info.attach_process.process_name);
+    }
     else if (info.type == DBGEVENT_EXIT_PROCESS)
     {
-        LOG_INFO("Debuggee process exited");
+        LOG_INFO("Debuggee process exited (reason: %s)", processExitReasons[info.exit_process.reason]);
 
         svcCloseHandle(handles.debugeeProcess);
         handles.debugeeProcess = 0;
@@ -380,7 +383,7 @@ void handleDebugeeProcessEvent()
     }
     else if (info.type == DBGEVENT_EXIT_THREAD)
     {
-        LOG_INFO("Debuggee process thread exited (thread ID: %u)", info.thread_id);
+        LOG_INFO("Debuggee process thread exited (thread ID: %u, reason: %s)", info.thread_id, threadExitReasons[info.exit_thread.reason]);
 
         removeAttachedThread(info.thread_id);
     } 
