@@ -6,78 +6,152 @@
 
 #include "http.h"
 
+const u64 SYS_TITLE_ID = 0x00040130091A8C02ULL;
+
 inline const char* rStr(Result r) { return R_FAILED(r) ? "FAIL" : "OK"; };
 
-const u64 SYS_TITLE_ID = 0x00040130091A8C02ULL;
+Result openProcessByTitleId(u64 titleId, Handle* processHandleOut)
+{
+    Result r;
+    u32 pidList[0x40];
+    s32 processCount;
+    Handle foundProcessHandle = 0;
+
+    *processHandleOut = 0;
+    
+    r = svcGetProcessList(&processCount, pidList, sizeof(pidList)/sizeof(u32));
+    if (R_FAILED(r))
+        return r;
+
+    for (s32 i = 0; i < processCount; i++)
+    {
+        Handle processHandle;
+        Result res = svcOpenProcess(&processHandle, pidList[i]);
+        if(R_FAILED(res))
+            continue;
+
+        u64 procTitleId;
+        svcGetProcessInfo((s64*)&procTitleId, processHandle, 0x10001);
+        if(procTitleId == titleId)
+            foundProcessHandle = processHandle;
+        else
+            svcCloseHandle(processHandle);
+    }
+
+    if (foundProcessHandle == 0)
+        return -1;
+
+    *processHandleOut = foundProcessHandle;
+
+    return 0;
+}
+
+#define PRINT_AND_EXIT_IF_R_FAILED(r, format, ...)  \
+    if (R_FAILED((r)))                              \
+    {                                               \
+        printf(format "\n", ##__VA_ARGS__);         \
+        goto failure;                               \
+    }
 
 int main()
 {
-	Result r;
-	bool launched = false;
-	u32 launchPid = 0;
-	int launchResult = 0;
-	u32 downloaded_size = 0;
+    Result r;
+    u32 launchPid = 0;
+    u32 downloadedSize = 0;
+    Handle sysProcessHandle = 0;
 
-	gfxInitDefault();
-	consoleInit(GFX_TOP, NULL);
+    gfxInitDefault();
+    atexit(gfxExit);
 
-	printf("NextProf\n\n");
+    consoleInit(GFX_TOP, NULL);
+    printf("NextProf\n\n--------------------------------\n\n");
 
-	nsInit();
-	httpcInit(0);
+    r = srvPmInit();
+    PRINT_AND_EXIT_IF_R_FAILED(r, "Initing srv:pm failed: 0x%08lX", r);
+    atexit(srvPmExit);
 
-	printf("Downloading sysmodule files...\n");
-	gspWaitForVBlank();
-	gfxSwapBuffers();
+    r = nsInit();
+    PRINT_AND_EXIT_IF_R_FAILED(r, "Initing ns failed: 0x%08lX", r);
+    atexit(nsExit);
 
-	r = http_download(HTTP_HOST "/sysmodule/code.bin", "/luma/titles/00040130091A8C02/code.bin", &downloaded_size);
-	printf("code.bin:     %s (%lu bytes)\n", rStr(r), downloaded_size);
-	gspWaitForVBlank();
-	gfxSwapBuffers();
+    r = httpcInit(0);
+    PRINT_AND_EXIT_IF_R_FAILED(r, "Initing httpc failed: 0x%08lX", r);
+    atexit(httpcExit);
 
-	r = http_download(HTTP_HOST "/sysmodule/exheader.bin", "/luma/titles/00040130091A8C02/exheader.bin", &downloaded_size);
-	printf("exheader.bin: %s (%lu bytes)\n\n", rStr(r), downloaded_size);
+    r = openProcessByTitleId(SYS_TITLE_ID, &sysProcessHandle);
+    if (R_SUCCEEDED(r))
+    {
+        printf("Profiler is already running!\n\nPress A to stop it.\nPress START to exit.\n\n");
+        
+        while (aptMainLoop())
+        {
+            gspWaitForVBlank();
+            gfxSwapBuffers();
+            hidScanInput();
 
-	printf("Press A to start profiler sysmodule.\nPress START to exit.\n\n");
+            u32 kDown = hidKeysDown();
 
-	while (aptMainLoop())
-	{
-		gspWaitForVBlank();
-		gfxSwapBuffers();
-		hidScanInput();
+            if (kDown & KEY_A)
+            {
+                // Note: Initing pm:app freezes the system for some reason,
+                //       so we directly publish the termination notification.
+                r = SRVPM_PublishToProcess(0x100, sysProcessHandle);
+                PRINT_AND_EXIT_IF_R_FAILED(r, "Publishing termination notification failed: 0x%08lX", r);
+                break;
+            }
+            if (kDown & KEY_START)
+                return 0;
+        }
 
-		u32 kDown = hidKeysDown();
+        svcCloseHandle(sysProcessHandle);
+    }
 
-		if (kDown & KEY_A)
-		{
-			launchResult = NS_LaunchTitle(SYS_TITLE_ID, 0, &launchPid);
-			launched = true;
-			break;
-		}
-		else if (kDown & KEY_START)
-			break;
-	}
+    printf("Downloading sysmodule files...\n");
+    gspWaitForVBlank();
+    gfxSwapBuffers();
 
-	if (launched && R_FAILED(launchResult))
-	{
-		printf("Failed to launch profiler sysmodule: %08X\n", launchResult);
-		
-		while (aptMainLoop())
-		{
-			gspWaitForVBlank();
-			gfxSwapBuffers();
-			hidScanInput();
+    r = http_download(HTTP_HOST "/sysmodule/code.bin", "/luma/titles/00040130091A8C02/code.bin", &downloadedSize);
+    printf("code.bin:     %s (%lu bytes)\n", rStr(r), downloadedSize);
+    gspWaitForVBlank();
+    gfxSwapBuffers();
 
-			u32 kDown = hidKeysDown();
+    r = http_download(HTTP_HOST "/sysmodule/exheader.bin", "/luma/titles/00040130091A8C02/exheader.bin", &downloadedSize);
+    printf("exheader.bin: %s (%lu bytes)\n\n", rStr(r), downloadedSize);
 
-			if (kDown & KEY_START)
-				break;
-		}
-	}
+    printf("Press A to start profiler.\nPress START to exit.\n\n");
 
-	httpcExit();
-	nsExit();
-	gfxExit();
+    while (aptMainLoop())
+    {
+        gspWaitForVBlank();
+        gfxSwapBuffers();
+        hidScanInput();
 
-	return 0;
+        u32 kDown = hidKeysDown();
+
+        if (kDown & KEY_A)
+        {
+            r = NS_LaunchTitle(SYS_TITLE_ID, 0, &launchPid);
+            PRINT_AND_EXIT_IF_R_FAILED(r, "Launching sysmodule title failed: 0x%08lX", r);
+            return 0;
+        }
+        else if (kDown & KEY_START)
+            return 0;
+    }
+
+failure:
+    printf("\nPress START to exit.\n");
+        
+    while (aptMainLoop())
+    {
+        gspWaitForVBlank();
+        gfxSwapBuffers();
+        hidScanInput();
+
+        u32 kDown = hidKeysDown();
+
+        if (kDown & KEY_START)
+            break;
+    }
+
+    return 1;
 }
