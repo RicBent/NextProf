@@ -50,7 +50,7 @@ union
     {
         Handle notification;
         Handle perfCounterOverflowEvent;
-        Handle debugeeProcess;
+        Handle debuggeeProcess;
     };
     Handle wait[3];
 } handles;
@@ -60,10 +60,18 @@ s32 waitHandlesActive = 0;
 bool attached = false;
 
 #define MAX_ATTACHED_THREADS 0x20
-u32 attachedThreadIds[MAX_ATTACHED_THREADS];
+
+typedef struct
+{
+    u32 id;
+    u32 startAddress;
+    u32 stackTop;
+} AttachedThread;
+
+AttachedThread attachedThreads[MAX_ATTACHED_THREADS];
 size_t attachedThreadCount = 0;
 
-bool addAttachedThread(u32 threadId)
+bool addAttachedThread(u32 threadId, u32 pc, u32 sp)
 {
     if (attachedThreadCount >= MAX_ATTACHED_THREADS)
     {
@@ -71,7 +79,12 @@ bool addAttachedThread(u32 threadId)
         return false;
     }
 
-    attachedThreadIds[attachedThreadCount++] = threadId;
+    attachedThreads[attachedThreadCount++] = (AttachedThread){
+        .id = threadId,
+        .startAddress = pc,
+        .stackTop = sp
+    };
+
     return true;
 }
 
@@ -79,11 +92,11 @@ bool removeAttachedThread(u32 threadId)
 {
     for (size_t i = 0; i < attachedThreadCount; i++)
     {
-        if (attachedThreadIds[i] == threadId)
+        if (attachedThreads[i].id == threadId)
         {
             for (size_t j = i; j < attachedThreadCount - 1; j++)
             {
-                attachedThreadIds[j] = attachedThreadIds[j + 1];
+                attachedThreads[j] = attachedThreads[j + 1];
             }
             attachedThreadCount--;
             return true;
@@ -92,14 +105,19 @@ bool removeAttachedThread(u32 threadId)
     return false;
 }
 
-bool isThreadAttached(u32 threadId)
+AttachedThread* getAttachedThread(u32 threadId)
 {
     for (size_t i = 0; i < attachedThreadCount; i++)
     {
-        if (attachedThreadIds[i] == threadId)
-            return true;
+        if (attachedThreads[i].id == threadId)
+            return &attachedThreads[i];
     }
-    return false;
+    return NULL;
+}
+
+inline bool isThreadAttached(u32 threadId)
+{
+    return getAttachedThread(threadId) != NULL;
 }
 
 
@@ -228,13 +246,13 @@ void handleDebugNextApplication()
 
     LOG_INFO("Debuggee application launched");
 
-    if (handles.debugeeProcess != 0)
+    if (handles.debuggeeProcess != 0)
     {
-        svcCloseHandle(handles.debugeeProcess);
-        handles.debugeeProcess = 0;
+        svcCloseHandle(handles.debuggeeProcess);
+        handles.debuggeeProcess = 0;
     }
 
-    r = PMDBG_RunQueuedProcess(&handles.debugeeProcess);
+    r = PMDBG_RunQueuedProcess(&handles.debuggeeProcess);
     TERMINATE_IF_R_FAILED(r, "Running queued debuggee process failed: %08X", r);
 
     waitHandlesActive++;
@@ -267,7 +285,7 @@ void handlePerfCounterOverflow()
     if (!attached)
         return;
 
-    r = svcBreakDebugProcess(handles.debugeeProcess);
+    r = svcBreakDebugProcess(handles.debuggeeProcess);
     if (R_FAILED(r))
     {
         LOG_WARNING("Breaking debuggee process failed: %08X", r);
@@ -275,14 +293,16 @@ void handlePerfCounterOverflow()
     }
 }
 
-void handleDebugeeProcessEvent()
+u32 stackBuffer[0x4000];
+
+void handleDebuggeeProcessEvent()
 {
     Result r;
     DebugEventInfo info;
 
     LOG_TRACE("Debuggee process event received");
 
-    r = svcGetProcessDebugEvent(&info, handles.debugeeProcess);
+    r = svcGetProcessDebugEvent(&info, handles.debuggeeProcess);
     TERMINATE_IF_R_FAILED(r, "Getting debug event failed: %08X", r);
 
     if (info.type == DBGEVENT_OUTPUT_STRING)
@@ -290,7 +310,7 @@ void handleDebugeeProcessEvent()
         char buffer[0x101];
         memset(buffer, 0, sizeof(buffer));
 
-        r = svcReadProcessMemory(buffer, handles.debugeeProcess, info.output_string.string_addr, info.output_string.string_size);
+        r = svcReadProcessMemory(buffer, handles.debuggeeProcess, info.output_string.string_addr, info.output_string.string_size);
         TERMINATE_IF_R_FAILED(r, "Reading debug output string failed: %08X", r);
 
         LOG_INFO("Debug output: %s", buffer);
@@ -310,11 +330,29 @@ void handleDebugeeProcessEvent()
 
             for (size_t i = 0; i < attachedThreadCount; i++)
             {
-                threadId = attachedThreadIds[i];
+                threadId = attachedThreads[i].id;
 
-                r = svcGetDebugThreadContext(&context, handles.debugeeProcess, threadId, THREADCONTEXT_CONTROL_CPU_SPRS);
+                r = svcGetDebugThreadContext(&context, handles.debuggeeProcess, threadId, THREADCONTEXT_CONTROL_CPU_SPRS);
                 TERMINATE_IF_R_FAILED(r, "Getting debug thread context failed (thread ID: %u): %08X", threadId, r);
                 LOG_INFO("Thread ID %lu - pc: 0x%08X, lr: 0x%08X, sp: 0x%08X", threadId, context.cpu_registers.pc, context.cpu_registers.lr, context.cpu_registers.sp);
+                
+                #if 0
+                    LOG_INFO(" stack from 0x%08X to 0x%08X", context.cpu_registers.sp, attachedThreads[i].stackTop);
+
+                    u32 stackSize = attachedThreads[i].stackTop - context.cpu_registers.sp;
+                    if (stackSize > sizeof(stackBuffer))
+                        stackSize = sizeof(stackBuffer);
+
+                    r = svcReadProcessMemory(stackBuffer, handles.debuggeeProcess, context.cpu_registers.sp, stackSize);
+                    TERMINATE_IF_R_FAILED(r, "Reading debug thread stack failed (thread ID: %u): %08X", threadId, r);
+
+                    for (size_t stackOffset = 0; stackOffset < stackSize / 4; stackOffset++)
+                    {
+                        u32 address = context.cpu_registers.sp + stackOffset * 4;
+                        u32 value = stackBuffer[stackOffset];
+                        LOG_INFO(" 0x%08X: 0x%08X", address, value);
+                    }
+                #endif
             }
 
             PMC_resetInterrupt();
@@ -334,8 +372,8 @@ void handleDebugeeProcessEvent()
     {
         LOG_INFO("Debuggee process exited (reason: %s)", processExitReasons[info.exit_process.reason]);
 
-        svcCloseHandle(handles.debugeeProcess);
-        handles.debugeeProcess = 0;
+        svcCloseHandle(handles.debuggeeProcess);
+        handles.debuggeeProcess = 0;
         waitHandlesActive--;
 
         attached = false;
@@ -350,12 +388,20 @@ void handleDebugeeProcessEvent()
     }
     else if (info.type == DBGEVENT_ATTACH_THREAD)
     {
+        ThreadContext context;
+
         LOG_INFO("Debuggee process thread attached (thread ID: %u)", info.thread_id);
         LOG_INFO(" Creator thread ID: %u", info.attach_thread.creator_thread_id);
         LOG_INFO(" TLS: 0x%08X", info.attach_thread.thread_local_storage);
-        LOG_INFO(" Entry point: %08X", info.attach_thread.entry_point);
+        // info.attached_thread.entry_point is always 0x100000?
 
-        addAttachedThread(info.thread_id);
+        r = svcGetDebugThreadContext(&context, handles.debuggeeProcess, info.thread_id, THREADCONTEXT_CONTROL_CPU_SPRS | THREADCONTEXT_CONTROL_CPU_GPRS);
+        TERMINATE_IF_R_FAILED(r, "Getting debug thread context failed: %08X", r);
+
+        LOG_INFO(" Thread pc: 0x%08X", context.cpu_registers.pc);
+        LOG_INFO(" Thread sp: 0x%08X", context.cpu_registers.sp);
+
+        addAttachedThread(info.thread_id, context.cpu_registers.pc, context.cpu_registers.sp);
     }
     else if (info.type == DBGEVENT_EXIT_THREAD)
     {
@@ -366,7 +412,7 @@ void handleDebugeeProcessEvent()
 
     if (info.flags & 1)
     {
-        r = svcContinueDebugEvent(handles.debugeeProcess, DBG_SIGNAL_SCHEDULE_EVENTS | DBG_SIGNAL_SYSCALL_EVENTS | DBG_SIGNAL_MAP_EVENTS);
+        r = svcContinueDebugEvent(handles.debuggeeProcess, DBG_SIGNAL_SCHEDULE_EVENTS | DBG_SIGNAL_SYSCALL_EVENTS | DBG_SIGNAL_MAP_EVENTS);
         if (R_FAILED(r))
             LOG_WARNING("Continuing debug event failed: %08X", r);
     }
@@ -445,7 +491,7 @@ int main()
             handlePerfCounterOverflow();
             break;
         case 2:
-            handleDebugeeProcessEvent();
+            handleDebuggeeProcessEvent();
             break;
         default:
             LOG_ERROR("Unknown synchronization index %d", idx);
