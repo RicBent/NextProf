@@ -22,7 +22,11 @@ void initLog(bool file, bool udp)
     if (udp && logSocket < 0)
     {
         logSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        LOG_INFO("Log socket created: %d", logSocket);
+        if (logSocket < 0)
+        {
+            LOG_ERROR("Failed to create log socket");
+            return;
+        }
 
         struct sockaddr_in addr;
         memset(&addr, 0, sizeof(addr));

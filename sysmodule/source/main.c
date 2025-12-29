@@ -6,6 +6,7 @@
 #include <3ds.h>
 
 #include "log.h"
+#include "record.h"
 #include "luma.h"
 
 
@@ -18,7 +19,7 @@
 
 
 
-#define SAMPLE_CYCLE_COUNT 1000000000
+#define SAMPLE_CYCLE_COUNT 10000000
 
 #define SOC_ALIGN       0x1000
 #define SOC_BUFFERSIZE  0x100000
@@ -320,12 +321,16 @@ void handleDebuggeeProcessEvent()
         if (info.exception.type == EXCEVENT_ATTACH_BREAK)
         {
             LOG_INFO("Debuggee process attach break");
+            
             attached = true;
+            recordInit(true, false);
+
             PMC_resetInterrupt();
         }
         else if (info.exception.type == EXCEVENT_DEBUGGER_BREAK)
         {
             u32 threadId;
+            u32 stackSize;
             ThreadContext context;
 
             for (size_t i = 0; i < attachedThreadCount; i++)
@@ -334,25 +339,23 @@ void handleDebuggeeProcessEvent()
 
                 r = svcGetDebugThreadContext(&context, handles.debuggeeProcess, threadId, THREADCONTEXT_CONTROL_CPU_SPRS);
                 TERMINATE_IF_R_FAILED(r, "Getting debug thread context failed (thread ID: %u): %08X", threadId, r);
-                LOG_INFO("Thread ID %lu - pc: 0x%08X, lr: 0x%08X, sp: 0x%08X", threadId, context.cpu_registers.pc, context.cpu_registers.lr, context.cpu_registers.sp);
-                
-                #if 0
-                    LOG_INFO(" stack from 0x%08X to 0x%08X", context.cpu_registers.sp, attachedThreads[i].stackTop);
+                LOG_TRACE("Thread ID %lu - pc: 0x%08X, lr: 0x%08X, sp: 0x%08X", threadId, context.cpu_registers.pc, context.cpu_registers.lr, context.cpu_registers.sp);
 
-                    u32 stackSize = attachedThreads[i].stackTop - context.cpu_registers.sp;
-                    if (stackSize > sizeof(stackBuffer))
-                        stackSize = sizeof(stackBuffer);
+                stackSize = attachedThreads[i].stackTop - context.cpu_registers.sp;
+                if (stackSize > sizeof(stackBuffer))
+                    stackSize = sizeof(stackBuffer);
 
-                    r = svcReadProcessMemory(stackBuffer, handles.debuggeeProcess, context.cpu_registers.sp, stackSize);
-                    TERMINATE_IF_R_FAILED(r, "Reading debug thread stack failed (thread ID: %u): %08X", threadId, r);
+                r = svcReadProcessMemory(stackBuffer, handles.debuggeeProcess, context.cpu_registers.sp, stackSize);
+                TERMINATE_IF_R_FAILED(r, "Reading debug thread stack failed: 0x%08X", r);
 
-                    for (size_t stackOffset = 0; stackOffset < stackSize / 4; stackOffset++)
-                    {
-                        u32 address = context.cpu_registers.sp + stackOffset * 4;
-                        u32 value = stackBuffer[stackOffset];
-                        LOG_INFO(" 0x%08X: 0x%08X", address, value);
-                    }
-                #endif
+                recordEnsureSpace(sizeof(u32) * 5 + stackSize);
+
+                recordHeader(RECORD_HEADER_SAMPLE);
+                recordU32(threadId);
+                recordU32(context.cpu_registers.pc);
+                recordU32(context.cpu_registers.lr);
+                recordU32(stackSize);
+                recordData(stackBuffer, stackSize);
             }
 
             PMC_resetInterrupt();
@@ -376,7 +379,9 @@ void handleDebuggeeProcessEvent()
         handles.debuggeeProcess = 0;
         waitHandlesActive--;
 
+        recordExit();
         attached = false;
+        attachedThreadCount = 0;
 
         r = PMDBG_LumaDebugNextApplicationByForce(true);
         TERMINATE_IF_R_FAILED(r, "Enabling Luma debug next application by force failed: %08X", r);
@@ -467,6 +472,8 @@ int main()
 
     PMC_init();
     atexit(PMC_exit);
+
+    atexit(recordExit);
 
     r = PMDBG_LumaDebugNextApplicationByForce(true);
     TERMINATE_IF_R_FAILED(r, "Enabling Luma debug next application by force failed: %08X", r);
