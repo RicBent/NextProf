@@ -15,10 +15,6 @@ Result http_download(const char* url, const char* filepath, u32* out_size)
     if (out_size != NULL)
         *out_size = 0;
 
-    file = fopen(filepath, "wb");
-    if (file == NULL)
-        return -3;
-
     httpcOpenContext(&context, HTTPC_METHOD_GET, url, 1);
     httpcSetSSLOpt(&context, SSLCOPT_DisableVerify);
     httpcSetKeepAlive(&context, HTTPC_KEEPALIVE_ENABLED);
@@ -48,6 +44,14 @@ Result http_download(const char* url, const char* filepath, u32* out_size)
     if (buffer==NULL){
         httpcCloseContext(&context);
         return -1;
+    }
+
+    file = fopen(filepath, "wb");
+    if (file == NULL)
+    {
+        free(buffer);
+        httpcCloseContext(&context);
+        return -3;
     }
 
     do {
