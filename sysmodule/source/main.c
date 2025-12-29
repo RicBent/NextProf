@@ -37,35 +37,6 @@ const char* threadExitReasons[] = {
     "process terminate",
 };
 
-Result openProcessByName(const char *name, Handle *h)
-{
-    u32 pidList[0x40];
-    s32 processCount;
-    svcGetProcessList(&processCount, pidList, 0x40);
-    Handle dstProcessHandle = 0;
-
-    for(s32 i = 0; i < processCount; i++)
-    {
-        Handle processHandle;
-        Result res = svcOpenProcess(&processHandle, pidList[i]);
-        if(R_FAILED(res))
-            continue;
-
-        char procName[8] = {0};
-        svcGetProcessInfo((s64*)procName, processHandle, 0x10000);
-        if(strncmp(procName, name, 8) == 0)
-            dstProcessHandle = processHandle;
-        else
-            svcCloseHandle(processHandle);
-    }
-
-    if(dstProcessHandle == 0)
-        return -1;
-
-    *h = dstProcessHandle;
-    return 0;
-}
-
 void socShutdown()
 {
     socExit();
@@ -371,6 +342,11 @@ void handleDebugeeProcessEvent()
 
         r = PMDBG_LumaDebugNextApplicationByForce(true);
         TERMINATE_IF_R_FAILED(r, "Enabling Luma debug next application by force failed: %08X", r);
+
+        LOG_INFO("Detached, waiting for debuggee application...");
+
+        // Do not continue even though the flag is set, the process is gone.
+        return;
     }
     else if (info.type == DBGEVENT_ATTACH_THREAD)
     {
@@ -476,6 +452,8 @@ int main()
             break;
         }
     }
+
+    LOG_INFO("Termination requested, exiting...");
 
     return 0;
 }
