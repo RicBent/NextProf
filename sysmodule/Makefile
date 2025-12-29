@@ -51,7 +51,8 @@ ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard
 
 CFLAGS	:=	-g -Wall -Wno-format -O3 -mword-relocations \
 			-fomit-frame-pointer -ffast-math \
-			$(ARCH) -std=c11
+			$(ARCH) -std=c11 \
+			-ffile-prefix-map=$(FILE_PREFIX)=
 
 CFLAGS	+=	$(INCLUDE) -DARM11 -D__3DS__
 
@@ -79,6 +80,7 @@ ifneq ($(BUILD),$(notdir $(CURDIR)))
 export TOPDIR		:=	$(CURDIR)
 export OUTPUT_DIR	:=	$(TOPDIR)/$(OUTPUT)
 export OUTPUT_FILE	:=	$(OUTPUT_DIR)/$(TARGET)
+export FILE_PREFIX	:=	$(abspath $(TOPDIR)/..)/
 
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 			$(foreach dir,$(DATA),$(CURDIR)/$(dir))
