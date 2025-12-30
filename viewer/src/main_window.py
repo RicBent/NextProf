@@ -124,15 +124,25 @@ class MainWindow(QMainWindow):
         controls_layout.setContentsMargins(0, 0, 0, 0)
 
         threshold_label = QLabel('Min %:', controls)
+        controls_layout.addWidget(threshold_label)
         self.threshold_spin = QDoubleSpinBox(controls)
         self.threshold_spin.setRange(0.0, 100.0)
         self.threshold_spin.setDecimals(3)
         self.threshold_spin.setSingleStep(0.1)
         self.threshold_spin.setValue(0.5)
         self.threshold_spin.valueChanged.connect(self.on_threshold_changed)
-
-        controls_layout.addWidget(threshold_label)
         controls_layout.addWidget(self.threshold_spin)
+
+        critical_label = QLabel('Critical %:', controls)
+        controls_layout.addWidget(critical_label)
+        self.critical_spin = QDoubleSpinBox(controls)
+        self.critical_spin.setRange(0.0, 100.0)
+        self.critical_spin.setDecimals(3)
+        self.critical_spin.setSingleStep(0.1)
+        self.critical_spin.setValue(5.0)
+        self.critical_spin.valueChanged.connect(self.on_critical_changed)
+        controls_layout.addWidget(self.critical_spin)
+
         controls_layout.addStretch(1)
         cg_layout.addWidget(controls)
 
@@ -188,7 +198,8 @@ class MainWindow(QMainWindow):
             self.callgraph_widget.scene.clear()
             return
         threshold = float(self.threshold_spin.value())
-        dot = generate_callgraph(self.profile, min_percentage=threshold)
+        critical = float(self.critical_spin.value())
+        dot = generate_callgraph(self.profile, min_percentage=threshold, critical_percentage=critical)
         self.callgraph_widget.load_from_dot(dot)
 
     def update_list(self):
@@ -196,5 +207,7 @@ class MainWindow(QMainWindow):
         self.refresh_callgraph()
 
     def on_threshold_changed(self, _value):
-        # Live-refresh call graph when the threshold changes
+        self.refresh_callgraph()
+
+    def on_critical_changed(self, _value):
         self.refresh_callgraph()

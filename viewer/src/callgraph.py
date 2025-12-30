@@ -2,7 +2,7 @@ import graphviz
 from .profile import Profile
 
 
-def get_gradient_color(percentage: float, max_percentage: float = 15.0) -> str:
+def get_gradient_color(percentage: float, max_percentage) -> str:
     """Get a smooth gradient color from grey through yellow, orange to red.
     
     Args:
@@ -38,13 +38,15 @@ def get_gradient_color(percentage: float, max_percentage: float = 15.0) -> str:
     return f'#{r:02x}{g:02x}{b:02x}'
 
 
-def generate_callgraph(profile: Profile, min_percentage: float = 1.0) -> graphviz.Digraph:
+def generate_callgraph(profile: Profile, min_percentage: float = 1.0, critical_percentage: float = 5.0) -> graphviz.Digraph:
     """Generate a gprof2dot-style call graph from profiling data.
     
     Args:
         profile: The profile containing function and call data
         min_percentage: Minimum percentage of total hits to include a function (default 1%)
     """
+    critical_percentage = max(critical_percentage, 0.001)
+
     dot = graphviz.Digraph(comment='Call Graph')
     dot.attr(rankdir='TB')
     dot.attr('node', shape='box', style='filled', fontname='monospace')
@@ -66,7 +68,7 @@ def generate_callgraph(profile: Profile, min_percentage: float = 1.0) -> graphvi
         percentage = func.hit_count / total_hits * 100
         direct_percentage = func.hit_count_direct / total_hits * 100 if func.hit_count_direct else 0
 
-        color = get_gradient_color(percentage)
+        color = get_gradient_color(percentage, critical_percentage)
         
         label = f'{func.name}\\n{percentage:.1f}% ({func.hit_count})'
         if func.hit_count_direct > 0:
