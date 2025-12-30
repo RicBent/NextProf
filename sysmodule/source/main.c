@@ -5,6 +5,7 @@
 
 #include <3ds.h>
 
+#include "config.h"
 #include "log.h"
 #include "record.h"
 #include "luma.h"
@@ -427,24 +428,20 @@ int main()
 {
     Result r;
 
-    initLog(true, false);
-    atexit(exitLog);
+    configRead();
 
     socBuf = memalign(SOC_ALIGN, SOC_BUFFERSIZE);
     if (socBuf == NULL)
-    {
-        LOG_ERROR("Allocating soc buffer failed");
         return -1;
-    }
     if ((r = socInit(socBuf, SOC_BUFFERSIZE)) < 0)
     {
-        LOG_ERROR("Initing soc failed: %08X", r);
         free(socBuf);
         return -1;
     }
     atexit(socShutdown);
 
-    initLog(false, true);
+    initLog(true, false);
+    atexit(exitLog);
 
     if ((r = nsInit()) < 0)
     {

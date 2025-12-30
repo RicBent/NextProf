@@ -28,9 +28,9 @@ include $(DEVKITARM)/3ds_rules
 #---------------------------------------------------------------------------------
 TARGET		    :=	nextprof_sys
 BUILD		    :=	build
-SOURCES		    :=	source
+SOURCES		    :=	source ../common/source
 DATA		    :=	data
-INCLUDES	    :=	include
+INCLUDES	    :=	include ../common/include
 OUTPUT      	:= output
 APP_TITLE       :=  NextProfiler
 APP_DESCRIPTION :=  NextProfiler System Module
@@ -51,7 +51,7 @@ ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard
 
 CFLAGS	:=	-g -Wall -Wno-format -O3 -mword-relocations \
 			-fomit-frame-pointer -ffast-math \
-			$(ARCH) -std=c11 \
+			$(ARCH) -std=gnu11 \
 			-ffile-prefix-map=$(FILE_PREFIX)=
 
 CFLAGS	+=	$(INCLUDE) -DARM11 -D__3DS__
@@ -109,10 +109,9 @@ endif
 export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
 			$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 
-export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)/include) \
+export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-			-I$(CURDIR)/$(BUILD) \
-			-I-$(CURDIR)/$(SOURCES)
+			-I$(CURDIR)/$(BUILD)
 
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
 			$(foreach dir,$(INCLUDES),-L$(CURDIR)/$(dir)/lib)

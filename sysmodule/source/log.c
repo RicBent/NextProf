@@ -1,4 +1,5 @@
 #include "log.h"
+#include "config.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -6,40 +7,61 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 FILE* logFile = NULL;
 int logSocket = -1;
 
+#define LOG_FILE_PATH   "/nextprof/nextprof_sys.log"
 
-void initLog(bool file, bool udp)
+void initLog()
 {
-    if (file && logFile == NULL)
-    {
+    if (config.log.file && logFile == NULL)
         logFile = fopen(LOG_FILE_PATH, "w");
-    }
 
-    if (udp && logSocket < 0)
+    if (config.log.udp && logSocket < 0)
     {
-        logSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (logSocket < 0)
+        struct addrinfo hints;
+        struct addrinfo* res = NULL;
+        char portStr[8];
+
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_protocol = IPPROTO_UDP;
+
+        snprintf(portStr, sizeof(portStr), "%u", config.network.portUdp);
+
+        if (getaddrinfo(config.network.host, portStr, &hints, &res) != 0 || res == NULL)
         {
-            LOG_ERROR("Failed to create log socket");
+            LOG_ERROR("Failed to resolve log host");
             return;
         }
 
-        struct sockaddr_in addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(LOG_SERVER_PORT);
-        addr.sin_addr.s_addr = inet_addr(LOG_SERVER_IP);
-
-        if (connect(logSocket, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+        for (struct addrinfo* rp = res; rp != NULL; rp = rp->ai_next)
         {
-            LOG_ERROR("Failed to connect log socket");
+            logSocket = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+            if (logSocket < 0)
+                continue;
+
+            if (connect(logSocket, rp->ai_addr, rp->ai_addrlen) == 0)
+            {
+                int flags = fcntl(logSocket, F_GETFL, 0);
+                if (flags >= 0)
+                    fcntl(logSocket, F_SETFL, flags | O_NONBLOCK);
+                break;
+            }
+
             close(logSocket);
             logSocket = -1;
         }
+
+        if (logSocket < 0)
+            LOG_ERROR("Failed to connect log socket");
+
+        freeaddrinfo(res);
     }
 }
 

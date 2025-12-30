@@ -5,6 +5,7 @@
 #include <3ds.h>
 
 #include "http.h"
+#include "config.h"
 
 const u64 SYS_TITLE_ID = 0x00040130091A8C02ULL;
 
@@ -53,12 +54,39 @@ Result openProcessByTitleId(u64 titleId, Handle* processHandleOut)
         goto failure;                               \
     }
 
+
+bool changeHostSwkbd(bool isChange)
+{
+    static SwkbdState swkbd;
+    static char swkbdBuffer[60];
+
+    SwkbdButton button = SWKBD_BUTTON_NONE;
+
+    swkbdInit(&swkbd, SWKBD_TYPE_NORMAL, 2, sizeof(swkbdBuffer) - 1);
+    swkbdSetInitialText(&swkbd, config.network.host);
+    swkbdSetHintText(&swkbd, "Enter host (without http prefix)");
+    swkbdSetButton(&swkbd, SWKBD_BUTTON_LEFT, isChange ? "Cancel" : "Exit", false);
+    swkbdSetButton(&swkbd, SWKBD_BUTTON_RIGHT, isChange ? "Change" : "Set", true);
+    swkbdSetValidation(&swkbd, SWKBD_NOTEMPTY, 0, 0);
+    swkbdSetFeatures(&swkbd, SWKBD_DEFAULT_QWERTY | SWKBD_ALLOW_RESET | SWKBD_ALLOW_POWER);
+    button = swkbdInputText(&swkbd, swkbdBuffer, sizeof(swkbdBuffer));
+
+    if (button != SWKBD_BUTTON_RIGHT || swkbdBuffer[0] == '\0')
+        return false;
+
+    configWriteNetworkHost(swkbdBuffer);
+    return true;
+}
+
+
 int main()
 {
     Result r;
+    u32 kDown = 0;
     u32 launchPid = 0;
     u32 downloadedSize = 0;
     Handle sysProcessHandle = 0;
+    char urlBuffer[128];
 
     gfxInitDefault();
     atexit(gfxExit);
@@ -87,8 +115,8 @@ int main()
         {
             gspWaitForVBlank();
             gfxSwapBuffers();
-            hidScanInput();
 
+            hidScanInput();
             u32 kDown = hidKeysDown();
 
             if (kDown & KEY_A)
@@ -106,16 +134,42 @@ int main()
         svcCloseHandle(sysProcessHandle);
     }
 
+    if (!configRead() || config.network.host[0] == '\0')
+    {
+        printf("No host configured.\nPlease enter host (without http prefix).\n\n");
+        gspWaitForVBlank();
+        gfxSwapBuffers();
+
+        if (!changeHostSwkbd(false))
+            return 1;
+
+        printf("Host set to %s\n\n", config.network.host);
+    }
+
+    hidScanInput();
+    kDown = hidKeysDown();
+    if (kDown & KEY_SELECT)
+    {
+        printf("Change host (without http prefix).\n\n");
+        gspWaitForVBlank();
+        gfxSwapBuffers();
+
+        if (changeHostSwkbd(true))
+            printf("Host changed to %s\n\n", config.network.host);
+    }
+
     printf("Downloading sysmodule files...\n");
     gspWaitForVBlank();
     gfxSwapBuffers();
 
-    r = http_download(HTTP_HOST "/sysmodule/code.bin", "/luma/titles/00040130091A8C02/code.bin", &downloadedSize);
+    snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/sysmodule/code.bin", config.network.host, config.network.portHttp);
+    r = http_download(urlBuffer, "/luma/titles/00040130091A8C02/code.bin", &downloadedSize);
     printf("code.bin:     %s (%lu bytes)\n", rStr(r), downloadedSize);
     gspWaitForVBlank();
     gfxSwapBuffers();
 
-    r = http_download(HTTP_HOST "/sysmodule/exheader.bin", "/luma/titles/00040130091A8C02/exheader.bin", &downloadedSize);
+    snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/sysmodule/exheader.bin", config.network.host, config.network.portHttp);
+    r = http_download(urlBuffer, "/luma/titles/00040130091A8C02/exheader.bin", &downloadedSize);
     printf("exheader.bin: %s (%lu bytes)\n\n", rStr(r), downloadedSize);
 
     printf("Press A to start profiler.\nPress START to exit.\n\n");
@@ -124,8 +178,8 @@ int main()
     {
         gspWaitForVBlank();
         gfxSwapBuffers();
-        hidScanInput();
 
+        hidScanInput();
         u32 kDown = hidKeysDown();
 
         if (kDown & KEY_A)

@@ -3,7 +3,8 @@
         {
             "name": "dkp",
             "includePath": [
-                "/opt/devkitpro/libctru/include/**"
+                "/opt/devkitpro/libctru/include",
+                "${workspaceFolder}/common/include"
             ],
             "compilerPath": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc",
             "cStandard": "c11",

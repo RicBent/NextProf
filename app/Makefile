@@ -35,9 +35,9 @@ include $(DEVKITARM)/3ds_rules
 #---------------------------------------------------------------------------------
 TARGET      := nextprof_app
 BUILD       := build
-SOURCES     := source
+SOURCES     := source ../common/source
 DATA        := data
-INCLUDES    := include
+INCLUDES    := include ../common/include
 GRAPHICS    := gfx
 OUTPUT      := output
 RESOURCES   := resources
