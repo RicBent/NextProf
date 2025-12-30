@@ -158,19 +158,29 @@ int main()
             printf("Host changed to %s\n\n", config.network.host);
     }
 
-    printf("Downloading sysmodule files...\n");
+    snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/config.ini", config.network.host, config.network.portHttp);
+    r = http_download(urlBuffer, CONFIG_PATH, &downloadedSize);
     gspWaitForVBlank();
     gfxSwapBuffers();
 
-    snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/sysmodule/code.bin", config.network.host, config.network.portHttp);
-    r = http_download(urlBuffer, "/luma/titles/00040130091A8C02/code.bin", &downloadedSize);
-    printf("code.bin:     %s (%lu bytes)\n", rStr(r), downloadedSize);
-    gspWaitForVBlank();
-    gfxSwapBuffers();
+    if (R_FAILED(r))
+        printf("Warning: Host not reachable\n\n");
+    else
+    {
+        printf("Downloading sysmodule files...\n");
+        gspWaitForVBlank();
+        gfxSwapBuffers();
 
-    snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/sysmodule/exheader.bin", config.network.host, config.network.portHttp);
-    r = http_download(urlBuffer, "/luma/titles/00040130091A8C02/exheader.bin", &downloadedSize);
-    printf("exheader.bin: %s (%lu bytes)\n\n", rStr(r), downloadedSize);
+        snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/sysmodule/code.bin", config.network.host, config.network.portHttp);
+        r = http_download(urlBuffer, "/luma/titles/00040130091A8C02/code.bin", &downloadedSize);
+        printf("code.bin:     %s (%lu bytes)\n", rStr(r), downloadedSize);
+        gspWaitForVBlank();
+        gfxSwapBuffers();
+
+        snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/sysmodule/exheader.bin", config.network.host, config.network.portHttp);
+        r = http_download(urlBuffer, "/luma/titles/00040130091A8C02/exheader.bin", &downloadedSize);
+        printf("exheader.bin: %s (%lu bytes)\n\n", rStr(r), downloadedSize);
+    }
 
     printf("Press A to start profiler.\nPress START to exit.\n\n");
 

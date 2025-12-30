@@ -2,6 +2,9 @@
 
 #include <stdbool.h>
 
+#define CONFIG_DIR "/nextprof"
+#define CONFIG_PATH "/nextprof/config.ini"
+
 typedef struct {
     struct {
         char host[60];

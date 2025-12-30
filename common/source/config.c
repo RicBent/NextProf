@@ -6,8 +6,6 @@
 #include <sys/stat.h>
 #include <ctype.h>
 
-#define CONFIG_DIR "/nextprof"
-#define CONFIG_PATH "/nextprof/config.ini"
 #define CONFIG_HOST_DEFAULT ""
 #define CONFIG_PORT_HTTP_DEFAULT 7621
 #define CONFIG_PORT_UDP_DEFAULT 7622

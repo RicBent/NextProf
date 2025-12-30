@@ -2,12 +2,44 @@
 
 import sys
 import os
+import io
 import socket
 import datetime
 import threading
 import argparse
+import configparser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Optional
+
+
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    finally:
+        s.close()
+    return ip
+
+
+def get_config_with_adjusted_host(local_ip: str) -> str:
+    parser = configparser.ConfigParser()
+    parser.read('config.ini')
+
+    target = 'Network'
+
+    for name in parser.sections():
+        if name.lower() == target.lower():
+            target = name
+            break
+    else:
+        parser.add_section(target)
+
+    parser[target]["Host"] = local_ip
+
+    with io.StringIO() as buf:
+        parser.write(buf)
+        return buf.getvalue()
 
 
 class HttpRequestHandler(BaseHTTPRequestHandler):
@@ -19,7 +51,19 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
         '/app/nextprof_app.cia': 'app/output/nextprof_app.cia',
     }
 
+    def send_response_with_content(self, code: int, content: bytes):
+        self.send_response(code)
+        self.send_header('Content-Length', str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
     def do_GET(self):
+        if self.path == '/config.ini':
+            local_ip = self.server.local_ip
+            config = get_config_with_adjusted_host(local_ip)
+            self.send_response_with_content(200, config.encode())
+            return
+
         if self.path not in self.ROUTES:
             self.send_error(404)
             return
@@ -28,10 +72,7 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
         try:
             with open(file_path, 'rb') as f:
                 content = f.read()
-            self.send_response(200)
-            self.send_header('Content-Length', str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
+            self.send_response_with_content(200, content)
         except FileNotFoundError:
             self.send_error(404)
 
@@ -58,17 +99,6 @@ def log_udp_loop(stop_event: threading.Event, host: str, port: int, log_file_pat
             continue  # Check stop_event again
     
     sock.close()
-
-
-def get_local_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # Doesn't have to be reachable
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-    finally:
-        s.close()
-    return ip
 
 
 def show_qr_codes(host: str, port: int):
@@ -104,6 +134,7 @@ def main():
     print('Press Ctrl+C to stop.\n')
 
     server = HTTPServer((host, args.ph), HttpRequestHandler)
+    server.local_ip = local_ip
     
     # Create stop event for clean shutdown
     stop_event = threading.Event()
