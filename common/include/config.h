@@ -20,6 +20,9 @@ typedef struct {
         bool file;
         bool tcp;
     } record;
+    struct {
+        unsigned int stackSize;
+    } profile;
 } Config;
 
 extern Config config;

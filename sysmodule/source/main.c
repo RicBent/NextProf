@@ -345,9 +345,14 @@ void handleDebuggeeProcessEvent()
                 stackSize = attachedThreads[i].stackTop - context.cpu_registers.sp;
                 if (stackSize > sizeof(stackBuffer))
                     stackSize = sizeof(stackBuffer);
-
-                r = svcReadProcessMemory(stackBuffer, handles.debuggeeProcess, context.cpu_registers.sp, stackSize);
-                TERMINATE_IF_R_FAILED(r, "Reading debug thread stack failed: 0x%08X", r);
+                if (stackSize > config.profile.stackSize)
+                    stackSize = config.profile.stackSize & ~3;
+                
+                if (stackSize > 0)
+                {
+                    r = svcReadProcessMemory(stackBuffer, handles.debuggeeProcess, context.cpu_registers.sp, stackSize);
+                    TERMINATE_IF_R_FAILED(r, "Reading debug thread stack failed: 0x%08X", r);
+                }
 
                 recordEnsureSpace(sizeof(u32) * 5 + stackSize);
 
@@ -356,7 +361,8 @@ void handleDebuggeeProcessEvent()
                 recordU32(context.cpu_registers.pc);
                 recordU32(context.cpu_registers.lr);
                 recordU32(stackSize);
-                recordData(stackBuffer, stackSize);
+                if (stackSize > 0)
+                    recordData(stackBuffer, stackSize);
             }
 
             PMC_resetInterrupt();
@@ -476,6 +482,7 @@ int main()
     TERMINATE_IF_R_FAILED(r, "Enabling Luma debug next application by force failed: %08X", r);
 
     LOG_INFO("Started, waiting for debuggee application...");
+    LOG_INFO("STACK SIZE LIMIT: %u bytes", config.profile.stackSize);
 
     s32 idx = 0;
     while (!terminationRequested)

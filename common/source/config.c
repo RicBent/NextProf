@@ -26,6 +26,9 @@ Config config = {
         .file = true,
         .tcp = true,
     },
+    .profile = {
+        .stackSize = 0,
+    },
 };
 
 #define SECTION_START(s)                                                \
@@ -44,6 +47,12 @@ Config config = {
 #define CHECK_READ_INT(field)                                           \
     if (strcasecmp(key, #field) == 0) {                                 \
         cfg->field = strtol(value, NULL, 10);                           \
+        return 1;                                                       \
+    }
+
+#define CHECK_READ_UINT(field)                                          \
+    if (strcasecmp(key, #field) == 0) {                                 \
+        cfg->field = strtoul(value, NULL, 10);                          \
         return 1;                                                       \
     }
 
@@ -71,6 +80,10 @@ int configReadCallback(const char* section, const char* key, const char* value, 
     SECTION_START(record)
         CHECK_READ_BOOL(file)
         CHECK_READ_BOOL(tcp)
+    SECTION_END
+
+    SECTION_START(profile)
+        CHECK_READ_UINT(stackSize)
     SECTION_END
 
     return 1;
