@@ -12,6 +12,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Optional
 
 
+SOCKET_TIMEOUT = 0.25
+
+
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -76,10 +79,11 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
         except FileNotFoundError:
             self.send_error(404)
 
+
 def log_udp_loop(stop_event: threading.Event, host: str, port: int, log_file_path: Optional[str] = None):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((host, port))
-    sock.settimeout(0.25)  # Allow periodic checking of stop_event
+    sock.settimeout(SOCKET_TIMEOUT)
 
     while not stop_event.is_set():
         try:
@@ -96,10 +100,48 @@ def log_udp_loop(stop_event: threading.Event, host: str, port: int, log_file_pat
                 with open(log_file_path, 'a') as f:
                     f.write(line + '\n')
         except socket.timeout:
-            continue  # Check stop_event again
+            continue
     
     sock.close()
 
+
+def record_tcp_loop(stop_event: threading.Event, host: str, port: int):
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.bind((host, port))
+    server_sock.listen(1)
+    server_sock.settimeout(SOCKET_TIMEOUT)
+
+    while not stop_event.is_set():
+        try:
+            client_sock, addr = server_sock.accept()
+            with client_sock:
+                record_tcp_client_loop(stop_event, client_sock, addr)
+        except socket.timeout:
+            continue
+    
+    server_sock.close()
+
+
+def record_tcp_client_loop(stop_event: threading.Event, client_sock: socket.socket, addr):
+    client_sock.settimeout(SOCKET_TIMEOUT)
+
+    filename = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.bin'
+    filepath = os.path.join('profile', filename)
+
+    print(f'Started recording profiling data from {addr[0]}:{addr[1]} to {filepath}')
+
+    with open(filepath, 'wb') as f:
+        while not stop_event.is_set():
+            try:
+                data = client_sock.recv(2048)
+            except socket.timeout:
+                continue
+            if not data:
+                break
+            f.write(data)
+    
+    print(f'Stopped recording profiling data from {addr[0]}:{addr[1]} to {filepath}')
+    
 
 def show_qr_codes(host: str, port: int):
     url = f'http://{host}:{port}/app/nextprof_app.cia'
@@ -117,6 +159,7 @@ def main():
     parser = argparse.ArgumentParser(description='NextProf Host')
     parser.add_argument('-ph', type=int, default=7621, help='Port for HTTP server (default: 7621)')
     parser.add_argument('-pu', type=int, default=7622, help='Port for UDP listener (default: 7622)')
+    parser.add_argument('-pt', type=int, default=7623, help='Port for TCP recorder (default: 7623)')
     parser.add_argument('-qr', action='store_true', help='Show QR codes for downloading the app and sysmodule')
     args = parser.parse_args()
 
@@ -129,33 +172,36 @@ def main():
     os.makedirs('log', exist_ok=True)
     log_file_path = os.path.join('log', datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S.txt'))
 
+    os.makedirs('profile', exist_ok=True)
+
     print(f'HTTP serving on http://{local_ip}:{args.ph}/')
     print(f'UDP listening on {local_ip}:{args.pu}')
+    print(f'TCP recording on {local_ip}:{args.pt}')
     print('Press Ctrl+C to stop.\n')
 
     server = HTTPServer((host, args.ph), HttpRequestHandler)
     server.local_ip = local_ip
     
-    # Create stop event for clean shutdown
     stop_event = threading.Event()
     
-    # Start HTTP server in a separate thread
     http_thread = threading.Thread(target=server.serve_forever, daemon=True)
     http_thread.start()
     
-    # Start UDP server in a separate thread
     udp_thread = threading.Thread(target=log_udp_loop, args=(stop_event, host, args.pu, log_file_path), daemon=True)
     udp_thread.start()
 
+    tcp_thread = threading.Thread(target=record_tcp_loop, args=(stop_event, host, args.pt), daemon=True)
+    tcp_thread.start()
+
     try:
-        # Keep main thread alive
         while True:
             threading.Event().wait(1)
     except KeyboardInterrupt:
         print('\nShutting down...')
         stop_event.set()
         server.shutdown()
-        udp_thread.join(timeout=5)
+        udp_thread.join(timeout=SOCKET_TIMEOUT + 1)
+        tcp_thread.join(timeout=SOCKET_TIMEOUT + 1)
 
     sys.exit(0)
 

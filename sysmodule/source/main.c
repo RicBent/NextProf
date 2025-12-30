@@ -324,7 +324,7 @@ void handleDebuggeeProcessEvent()
             LOG_INFO("Debuggee process attach break");
             
             attached = true;
-            recordInit(true, false);
+            recordInit();
 
             PMC_resetInterrupt();
         }

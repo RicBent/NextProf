@@ -22,7 +22,7 @@ typedef enum {
 extern u8 recordBuffer[RECORD_BUFFER_SIZE];
 extern u8* recordHead;
 
-void recordInit(bool toFile, bool toNetwork);
+void recordInit();
 void recordExit();
 void recordFlush();
 

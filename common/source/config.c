@@ -9,16 +9,22 @@
 #define CONFIG_HOST_DEFAULT ""
 #define CONFIG_PORT_HTTP_DEFAULT 7621
 #define CONFIG_PORT_UDP_DEFAULT 7622
+#define CONFIG_PORT_TCP_DEFAULT 7623
 
 Config config = {
     .network = {
         .host = CONFIG_HOST_DEFAULT,
         .portHttp = CONFIG_PORT_HTTP_DEFAULT,
         .portUdp = CONFIG_PORT_UDP_DEFAULT,
+        .portTcp = CONFIG_PORT_TCP_DEFAULT,
     },
     .log = {
         .file = true,
         .udp = true,
+    },
+    .record = {
+        .file = true,
+        .tcp = true,
     },
 };
 
@@ -54,11 +60,17 @@ int configReadCallback(const char* section, const char* key, const char* value, 
         CHECK_READ_STRING(host)
         CHECK_READ_INT(portHttp)
         CHECK_READ_INT(portUdp)
+        CHECK_READ_INT(portTcp)
     SECTION_END
 
     SECTION_START(log)
         CHECK_READ_BOOL(file)
         CHECK_READ_BOOL(udp)
+    SECTION_END
+
+    SECTION_START(record)
+        CHECK_READ_BOOL(file)
+        CHECK_READ_BOOL(tcp)
     SECTION_END
 
     return 1;
