@@ -28,6 +28,7 @@ Config config = {
     },
     .profile = {
         .stackSize = 0,
+        .maxThreads = 0,
     },
 };
 
@@ -84,6 +85,7 @@ int configReadCallback(const char* section, const char* key, const char* value, 
 
     SECTION_START(profile)
         CHECK_READ_UINT(stackSize)
+        CHECK_READ_UINT(maxThreads)
     SECTION_END
 
     return 1;

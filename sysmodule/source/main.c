@@ -20,7 +20,7 @@
 
 
 
-#define SAMPLE_CYCLE_COUNT 10000000
+#define SAMPLE_CYCLE_COUNT 800000
 
 #define SOC_ALIGN       0x1000
 #define SOC_BUFFERSIZE  0x100000
@@ -334,7 +334,11 @@ void handleDebuggeeProcessEvent()
             u32 stackSize;
             ThreadContext context;
 
-            for (size_t i = 0; i < attachedThreadCount; i++)
+            size_t sendThreadCount = attachedThreadCount;
+            if (config.profile.maxThreads > 0 && sendThreadCount > config.profile.maxThreads)
+                sendThreadCount = config.profile.maxThreads;
+
+            for (size_t i = 0; i < sendThreadCount; i++)
             {
                 threadId = attachedThreads[i].id;
 
@@ -482,7 +486,6 @@ int main()
     TERMINATE_IF_R_FAILED(r, "Enabling Luma debug next application by force failed: %08X", r);
 
     LOG_INFO("Started, waiting for debuggee application...");
-    LOG_INFO("STACK SIZE LIMIT: %u bytes", config.profile.stackSize);
 
     s32 idx = 0;
     while (!terminationRequested)

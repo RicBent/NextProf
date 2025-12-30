@@ -22,6 +22,7 @@ typedef struct {
     } record;
     struct {
         unsigned int stackSize;
+        unsigned int maxThreads;
     } profile;
 } Config;
 
