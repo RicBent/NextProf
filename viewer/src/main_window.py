@@ -88,11 +88,6 @@ class MainWindow(QMainWindow):
         
         self.setup_ui()
 
-    def setup_ui(self):
-        self.setWindowTitle('NextProf Viewer')
-        self.setup_ui_menu_bar()
-        self.setup_ui()
-
     def setup_ui_menu_bar(self):
         menubar = self.menuBar()
         file_menu = menubar.addMenu('File')
@@ -111,6 +106,9 @@ class MainWindow(QMainWindow):
         self.setMenuBar(menubar)
 
     def setup_ui(self):        
+        self.setWindowTitle('NextProf Viewer')
+        self.setup_ui_menu_bar()
+
         self.model = FunctionTableModel()
 
         tabs = QTabWidget(self)
