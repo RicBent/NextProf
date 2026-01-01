@@ -19,9 +19,6 @@
     }
 
 
-
-#define SAMPLE_CYCLE_COUNT 800000
-
 #define SOC_ALIGN       0x1000
 #define SOC_BUFFERSIZE  0x100000
 u32* socBuf = NULL;
@@ -165,7 +162,7 @@ void PMC_resetInterrupt()
     u64 out;
 
     PMC_reset();
-    r = svcControlPerformanceCounter(&out, PERFCOUNTEROP_SET_VALUE, 0, (u64)-SAMPLE_CYCLE_COUNT);
+    r = svcControlPerformanceCounter(&out, PERFCOUNTEROP_SET_VALUE, 0, (u64)-config.profile.instructionInterval);
     TERMINATE_IF_R_FAILED(r, "PMC reset interrupt failed");
 }
 

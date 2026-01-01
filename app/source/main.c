@@ -158,7 +158,7 @@ int main()
             printf("Host changed to %s\n\n", config.network.host);
     }
 
-    snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/config.ini", config.network.host, config.network.portHttp);
+    snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%lu/config.ini", config.network.host, config.network.portHttp);
     r = http_download(urlBuffer, CONFIG_PATH, &downloadedSize);
     gspWaitForVBlank();
     gfxSwapBuffers();
@@ -171,13 +171,13 @@ int main()
         gspWaitForVBlank();
         gfxSwapBuffers();
 
-        snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/sysmodule/code.bin", config.network.host, config.network.portHttp);
+        snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%lu/sysmodule/code.bin", config.network.host, config.network.portHttp);
         r = http_download(urlBuffer, "/luma/titles/00040130091A8C02/code.bin", &downloadedSize);
         printf("code.bin:     %s (%lu bytes)\n", rStr(r), downloadedSize);
         gspWaitForVBlank();
         gfxSwapBuffers();
 
-        snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%d/sysmodule/exheader.bin", config.network.host, config.network.portHttp);
+        snprintf(urlBuffer, sizeof(urlBuffer), "http://%s:%lu/sysmodule/exheader.bin", config.network.host, config.network.portHttp);
         r = http_download(urlBuffer, "/luma/titles/00040130091A8C02/exheader.bin", &downloadedSize);
         printf("exheader.bin: %s (%lu bytes)\n\n", rStr(r), downloadedSize);
     }

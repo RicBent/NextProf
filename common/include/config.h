@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdbool.h>
+#include <3ds/types.h>
 
 #define CONFIG_DIR "/nextprof"
 #define CONFIG_PATH "/nextprof/config.ini"
@@ -8,9 +8,9 @@
 typedef struct {
     struct {
         char host[60];
-        int portHttp;
-        int portUdp;
-        int portTcp;
+        s32 portHttp;
+        s32 portUdp;
+        s32 portTcp;
     } network;
     struct {
         bool file;
@@ -21,8 +21,9 @@ typedef struct {
         bool tcp;
     } record;
     struct {
-        unsigned int stackSize;
-        unsigned int maxThreads;
+        s64 instructionInterval;
+        u32 stackSize;
+        u32 maxThreads;
     } profile;
 } Config;
 

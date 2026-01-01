@@ -6,17 +6,14 @@
 #include <sys/stat.h>
 #include <ctype.h>
 
-#define CONFIG_HOST_DEFAULT ""
-#define CONFIG_PORT_HTTP_DEFAULT 7621
-#define CONFIG_PORT_UDP_DEFAULT 7622
-#define CONFIG_PORT_TCP_DEFAULT 7623
+#define CONFIG_PROFILE_INSTRUCTION_INTERVAL_MIN 0x1000
 
 Config config = {
     .network = {
-        .host = CONFIG_HOST_DEFAULT,
-        .portHttp = CONFIG_PORT_HTTP_DEFAULT,
-        .portUdp = CONFIG_PORT_UDP_DEFAULT,
-        .portTcp = CONFIG_PORT_TCP_DEFAULT,
+        .host = "",
+        .portHttp = 7621,
+        .portUdp = 7622,
+        .portTcp = 7623,
     },
     .log = {
         .file = true,
@@ -27,6 +24,7 @@ Config config = {
         .tcp = true,
     },
     .profile = {
+        .instructionInterval = 0x100000,
         .stackSize = 0,
         .maxThreads = 0,
     },
@@ -45,17 +43,31 @@ Config config = {
         return 1;                                                       \
     }
 
-#define CHECK_READ_INT(field)                                           \
+#define CHECK_READ_S32(field)                                           \
     if (strcasecmp(key, #field) == 0) {                                 \
         int base = (strncasecmp(value, "0x", 2) == 0) ? 16 : 10;        \
         cfg->field = strtol(value, NULL, base);                         \
         return 1;                                                       \
     }
 
-#define CHECK_READ_UINT(field)                                          \
+#define CHECK_READ_U32(field)                                           \
     if (strcasecmp(key, #field) == 0) {                                 \
         int base = (strncasecmp(value, "0x", 2) == 0) ? 16 : 10;        \
         cfg->field = strtoul(value, NULL, base);                        \
+        return 1;                                                       \
+    }
+
+#define CHECK_READ_S64(field)                                           \
+    if (strcasecmp(key, #field) == 0) {                                 \
+        int base = (strncasecmp(value, "0x", 2) == 0) ? 16 : 10;        \
+        cfg->field = strtoll(value, NULL, base);                        \
+        return 1;                                                       \
+    }
+
+#define CHECK_READ_U64(field)                                           \
+    if (strcasecmp(key, #field) == 0) {                                 \
+        int base = (strncasecmp(value, "0x", 2) == 0) ? 16 : 10;        \
+        cfg->field = strtoull(value, NULL, base);                       \
         return 1;                                                       \
     }
 
@@ -70,9 +82,9 @@ int configReadCallback(const char* section, const char* key, const char* value, 
 {
     SECTION_START(network)
         CHECK_READ_STRING(host)
-        CHECK_READ_INT(portHttp)
-        CHECK_READ_INT(portUdp)
-        CHECK_READ_INT(portTcp)
+        CHECK_READ_S32(portHttp)
+        CHECK_READ_S32(portUdp)
+        CHECK_READ_S32(portTcp)
     SECTION_END
 
     SECTION_START(log)
@@ -86,8 +98,9 @@ int configReadCallback(const char* section, const char* key, const char* value, 
     SECTION_END
 
     SECTION_START(profile)
-        CHECK_READ_UINT(stackSize)
-        CHECK_READ_UINT(maxThreads)
+        CHECK_READ_S64(instructionInterval)
+        CHECK_READ_U32(stackSize)
+        CHECK_READ_U32(maxThreads)
     SECTION_END
 
     return 1;
@@ -98,6 +111,10 @@ bool configRead()
     mkdir(CONFIG_DIR, 0777);
 
     ini_browse(configReadCallback, NULL, CONFIG_PATH);
+    
+    if (config.profile.instructionInterval < CONFIG_PROFILE_INSTRUCTION_INTERVAL_MIN)
+        config.profile.instructionInterval = CONFIG_PROFILE_INSTRUCTION_INTERVAL_MIN;
+
     return config.network.host[0] != '\0';
 }
 
