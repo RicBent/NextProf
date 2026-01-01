@@ -22,29 +22,45 @@ class Profile:
         self.funcs_by_addr: dict[int, Function] = {}
 
     def track_hit(self, addr: int, direct: bool = True):
-        func_addr, func_name = self.symbols.get_nearest(addr)
-        if func_addr is None:
+        func_name = self.symbols.get(addr)
+        if func_name is None:
             return
-        if func_addr not in self.funcs_by_addr:
-            func = Function(address=func_addr, name=func_name)
-            self.funcs_by_addr[func_addr] = func
+        if addr not in self.funcs_by_addr:
+            func = Function(address=addr, name=func_name)
+            self.funcs_by_addr[addr] = func
             self.funcs.append(func)
-        func = self.funcs_by_addr[func_addr]
+        func = self.funcs_by_addr[addr]
         func.hit_count += 1
         if direct:
             func.hit_count_direct += 1
-
-    def is_executable_address(self, addr: int) -> bool:
-        # TODO: load this from symbol map
-        if addr >= 0x00100000 and addr < 0x0056B000:
-            return True
-        if addr >= 0x006C4DD4 and addr < 0x0077B56C:
-            return True
-        return False
     
     def break_trace(self, addr: int) -> bool:
         # TODO: use thread enntry pc
         return addr == 0x100000
+    
+    def debug_address_info_str(self, addr: int) -> str:
+        func_addr, func_name = self.symbols.get_nearest(addr)
+
+        if func_name is None:
+            func = 'None'
+        else:
+            if len(func_name) > 80:
+                func_name_trunc = func_name[:77] + '...'
+            else:
+                func_name_trunc = func_name
+            func = f'0x{func_addr:08X} : {func_name_trunc}'
+        
+        ex = 'X' if self.symbols.is_executable(addr) else '_'
+        ab = 'B' if self.symbols.is_after_bl(addr) else '_'
+
+        return f'0x{addr:08X} : {ex}{ab} - {func}'
+    
+    def debug_sample_info_print(self, packet: PacketSample):
+        print(' pc   - ' + self.debug_address_info_str(packet.pc))
+        print(' lr   - ' + self.debug_address_info_str(packet.lr))
+        for i, addr in enumerate(packet.stack):
+            s = self.debug_address_info_str(addr)
+            print(f' {i*4:04X} - {s}')
 
     def handle_sample_packet(self, packet: PacketSample):
         if self.main_thread_id is None:
@@ -54,17 +70,30 @@ class Profile:
         if packet.thread_id != self.main_thread_id:
             return
 
-        self.track_hit(packet.pc)
-        self.track_hit(packet.lr, direct=False)
-        for addr in packet.stack:
-            self.track_hit(addr, direct=False)
+        stack_return_addrs = [
+            addr for addr in packet.stack
+            if self.symbols.is_executable(addr) and self.symbols.is_after_bl(addr)
+        ]
 
-        chain = [self.symbols.get_nearest(addr)[0] for addr in [packet.pc, packet.lr] + packet.stack]
-        chain = [addr for addr in chain if addr is not None and self.is_executable_address(addr)]
-        for i in range(0, len(chain)):
-            if self.break_trace(chain[i]):
-                chain = chain[:i+1]
+        stack_return_addrs_exec = [
+            addr for addr in packet.stack
+            if self.symbols.is_executable(addr)
+        ]
+
+        chain = []
+
+        for addr in [packet.pc] + stack_return_addrs:
+            nearest = self.symbols.get_nearest(addr)[0]
+            if nearest is None:
+                continue
+
+            chain.append(nearest)
+
+            if self.break_trace(nearest):
                 break
+
+        for i, addr in enumerate(chain):
+            self.track_hit(addr, direct=(i == 0))
 
         for i in range(len(chain) - 1):
             callee_addr = chain[i]

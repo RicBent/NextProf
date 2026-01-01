@@ -2,7 +2,7 @@ import graphviz
 from .profile import Profile
 
 
-def get_gradient_color(percentage: float, max_percentage) -> str:
+def get_gradient_color(percentage: float, max_percentage: float) -> str:
     """Get a smooth gradient color from grey through yellow, orange to red.
     
     Args:
@@ -38,13 +38,14 @@ def get_gradient_color(percentage: float, max_percentage) -> str:
     return f'#{r:02x}{g:02x}{b:02x}'
 
 
-def generate_callgraph(profile: Profile, min_percentage: float = 1.0, critical_percentage: float = 5.0) -> graphviz.Digraph:
-    """Generate a gprof2dot-style call graph from profiling data.
-    
-    Args:
-        profile: The profile containing function and call data
-        min_percentage: Minimum percentage of total hits to include a function (default 1%)
-    """
+def generate_callgraph(
+    profile: Profile,
+    min_percentage: float = 1.0,
+    min_edge_percentage: float = 5.0,
+    critical_percentage: float = 5.0
+) -> graphviz.Digraph:
+    """Generate a gprof2dot-style call graph from profiling data."""
+
     critical_percentage = max(critical_percentage, 0.001)
 
     dot = graphviz.Digraph(comment='Call Graph')
@@ -69,8 +70,12 @@ def generate_callgraph(profile: Profile, min_percentage: float = 1.0, critical_p
         direct_percentage = func.hit_count_direct / total_hits * 100 if func.hit_count_direct else 0
 
         color = get_gradient_color(percentage, critical_percentage)
+
+        func_name = func.name
+        if len(func_name) > 50:
+            func_name = func_name[:47] + '...'
         
-        label = f'{func.name}\\n{percentage:.1f}% ({func.hit_count})'
+        label = f'{func_name}\\n{percentage:.1f}% ({func.hit_count})'
         if func.hit_count_direct > 0:
             label += f'\\n{direct_percentage:.1f}% direct ({func.hit_count_direct})'
         
@@ -81,14 +86,18 @@ def generate_callgraph(profile: Profile, min_percentage: float = 1.0, critical_p
         )
     
     # Add edges for call relationships
+    # Percentages: call count / total hits
     for func in significant_funcs:
         for callee_addr, call_count in func.callees.items():
-            if callee_addr in func_by_addr:
-                edge_percentage = call_count / total_hits * 100
-                dot.edge(
-                    f'func_{func.address:x}',
-                    f'func_{callee_addr:x}',
-                    label=f'{edge_percentage:.1f}%'
-                )
+            if not callee_addr in func_by_addr:
+                continue
+            edge_percentage = call_count / func.hit_count * 100
+            if edge_percentage < min_edge_percentage:
+                continue
+            dot.edge(
+                f'func_{func.address:x}',
+                f'func_{callee_addr:x}',
+                label=f'{edge_percentage:.1f}%'
+            )
     
     return dot

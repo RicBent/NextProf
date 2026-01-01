@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (QMainWindow, QTableView, QAbstractItemView,
                               QFileDialog, QMessageBox, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QDoubleSpinBox, QTabWidget)
 from PyQt6.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
 
-import os
+from typing import Optional
 
 from .symbols import SymbolMap
 from .profile import Profile
@@ -74,13 +74,21 @@ class FunctionTableModel(QAbstractTableModel):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, initial_file_path: str = None, initial_symbol_paths: list[str] = None):
+    def __init__(
+        self,
+        initial_file_path: Optional[str] = None,
+        initial_symbol_paths: Optional[list[str]] = None,
+        initial_code_paths: Optional[list[tuple[str, int]]] = None
+    ):
         super().__init__()
 
         self.symbols = SymbolMap()
         if initial_symbol_paths:
             for path in initial_symbol_paths:
                 self.symbols.load_from_file(path)
+        if initial_code_paths:
+            for path, addr in initial_code_paths:
+                self.symbols.load_code_from_file(path, addr)
 
         self.profile = Profile(self.symbols)
         if initial_file_path:
@@ -130,6 +138,16 @@ class MainWindow(QMainWindow):
         self.threshold_spin.setValue(0.5)
         self.threshold_spin.valueChanged.connect(self.on_threshold_changed)
         controls_layout.addWidget(self.threshold_spin)
+
+        edge_threshold_label = QLabel('Min Edge %:', controls)
+        controls_layout.addWidget(edge_threshold_label)
+        self.edge_threshold_spin = QDoubleSpinBox(controls)
+        self.edge_threshold_spin.setRange(0.0, 100.0)
+        self.edge_threshold_spin.setDecimals(3)
+        self.edge_threshold_spin.setSingleStep(0.1)
+        self.edge_threshold_spin.setValue(5.0)
+        self.edge_threshold_spin.valueChanged.connect(self.on_edge_threshold_changed)
+        controls_layout.addWidget(self.edge_threshold_spin)
 
         critical_label = QLabel('Critical %:', controls)
         controls_layout.addWidget(critical_label)
@@ -196,8 +214,9 @@ class MainWindow(QMainWindow):
             self.callgraph_widget.scene.clear()
             return
         threshold = float(self.threshold_spin.value())
+        edge_threshold = float(self.edge_threshold_spin.value())
         critical = float(self.critical_spin.value())
-        dot = generate_callgraph(self.profile, min_percentage=threshold, critical_percentage=critical)
+        dot = generate_callgraph(self.profile, min_percentage=threshold, min_edge_percentage=edge_threshold, critical_percentage=critical)
         self.callgraph_widget.load_from_dot(dot)
 
     def update_list(self):
@@ -205,6 +224,9 @@ class MainWindow(QMainWindow):
         self.refresh_callgraph()
 
     def on_threshold_changed(self, _value):
+        self.refresh_callgraph()
+
+    def on_edge_threshold_changed(self, _value):
         self.refresh_callgraph()
 
     def on_critical_changed(self, _value):
