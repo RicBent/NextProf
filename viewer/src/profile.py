@@ -16,7 +16,6 @@ class Function:
 class Profile:
 
     def __init__(self, symbols: SymbolMap):
-        self.main_thread_id: int | None = None
         self.symbols = symbols
         self.funcs = list[Function]()
         self.funcs_by_addr: dict[int, Function] = {}
@@ -35,7 +34,7 @@ class Profile:
             func.hit_count_direct += 1
     
     def break_trace(self, addr: int) -> bool:
-        # TODO: use thread enntry pc
+        # TODO: use thread entry pc
         return addr == 0x100000
     
     def debug_address_info_str(self, addr: int) -> str:
@@ -63,13 +62,6 @@ class Profile:
             print(f' {i*4:04X} - {s}')
 
     def handle_sample_packet(self, packet: PacketSample):
-        if self.main_thread_id is None:
-            self.main_thread_id = packet.thread_id
-
-        # TODO: right now we only track the main thread
-        if packet.thread_id != self.main_thread_id:
-            return
-
         stack_return_addrs = [
             addr for addr in packet.stack
             if self.symbols.is_executable(addr) and self.symbols.is_after_bl(addr)

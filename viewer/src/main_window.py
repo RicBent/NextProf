@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QMainWindow, QTableView, QAbstractItemView, 
-                              QFileDialog, QMessageBox, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QDoubleSpinBox, QTabWidget)
-from PyQt6.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
+                              QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QDoubleSpinBox, QTabWidget, QComboBox)
+from PyQt6.QtCore import Qt, QAbstractTableModel, QModelIndex
 
 from typing import Optional
 
@@ -159,6 +159,11 @@ class MainWindow(QMainWindow):
         self.critical_spin.valueChanged.connect(self.on_critical_changed)
         controls_layout.addWidget(self.critical_spin)
 
+        self.critical_kind_combo = QComboBox(controls)
+        self.critical_kind_combo.addItems(['Total', 'Direct'])
+        self.critical_kind_combo.currentIndexChanged.connect(self.on_critical_kind_changed)
+        controls_layout.addWidget(self.critical_kind_combo)
+
         controls_layout.addStretch(1)
         cg_layout.addWidget(controls)
 
@@ -216,7 +221,13 @@ class MainWindow(QMainWindow):
         threshold = float(self.threshold_spin.value())
         edge_threshold = float(self.edge_threshold_spin.value())
         critical = float(self.critical_spin.value())
-        dot = generate_callgraph(self.profile, min_percentage=threshold, min_edge_percentage=edge_threshold, critical_percentage=critical)
+        dot = generate_callgraph(
+            self.profile,
+            min_percentage=threshold,
+            min_edge_percentage=edge_threshold,
+            critical_percentage=critical,
+            critical_by_direct=self.critical_kind_combo.currentIndex() == 1
+        )
         self.callgraph_widget.load_from_dot(dot)
 
     def update_list(self):
@@ -231,3 +242,7 @@ class MainWindow(QMainWindow):
 
     def on_critical_changed(self, _value):
         self.refresh_callgraph()
+
+    def on_critical_kind_changed(self, _index):
+        self.refresh_callgraph()
+

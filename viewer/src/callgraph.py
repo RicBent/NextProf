@@ -42,7 +42,8 @@ def generate_callgraph(
     profile: Profile,
     min_percentage: float = 1.0,
     min_edge_percentage: float = 5.0,
-    critical_percentage: float = 5.0
+    critical_percentage: float = 5.0,
+    critical_by_direct: bool = False,
 ) -> graphviz.Digraph:
     """Generate a gprof2dot-style call graph from profiling data."""
 
@@ -69,7 +70,7 @@ def generate_callgraph(
         percentage = func.hit_count / total_hits * 100
         direct_percentage = func.hit_count_direct / total_hits * 100 if func.hit_count_direct else 0
 
-        color = get_gradient_color(percentage, critical_percentage)
+        color = get_gradient_color(direct_percentage if critical_by_direct else percentage, critical_percentage)
 
         func_name = func.name
         if len(func_name) > 50:
