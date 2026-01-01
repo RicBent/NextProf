@@ -47,13 +47,15 @@ Config config = {
 
 #define CHECK_READ_INT(field)                                           \
     if (strcasecmp(key, #field) == 0) {                                 \
-        cfg->field = strtol(value, NULL, 10);                           \
+        int base = (strncasecmp(value, "0x", 2) == 0) ? 16 : 10;        \
+        cfg->field = strtol(value, NULL, base);                         \
         return 1;                                                       \
     }
 
 #define CHECK_READ_UINT(field)                                          \
     if (strcasecmp(key, #field) == 0) {                                 \
-        cfg->field = strtoul(value, NULL, 10);                          \
+        int base = (strncasecmp(value, "0x", 2) == 0) ? 16 : 10;        \
+        cfg->field = strtoul(value, NULL, base);                        \
         return 1;                                                       \
     }
 
