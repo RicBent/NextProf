@@ -1,6 +1,6 @@
 # NextProf
 
-Profiler for the Nintendo 3ds
+Sampling profiler for the Nintendo 3ds
 
 ![Graph View](./.github/images/viewer_graph.png)
 
