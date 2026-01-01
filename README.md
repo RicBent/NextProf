@@ -55,10 +55,10 @@ To view captured call graphs, you need to install `Graphviz`.
 
 ### Sample usage:
 
-``sh
+```sh
 cd viewer
 uv run ./main.py -c path/to/code.bin  -s path/to/code.map -f ../profile/date_time.bin
-``
+```
 
 A symbol map (`-s`) exported from IDA is strictly required currently as that is used to determine what a function a given address belongs to.
 
