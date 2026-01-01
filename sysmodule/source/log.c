@@ -14,7 +14,7 @@
 FILE* logFile = NULL;
 int logSocket = -1;
 
-#define LOG_FILE_PATH   "/nextprof/nextprof_sys.log"
+#define LOG_FILE_PATH   "/nextprof/sys.log"
 
 void initLog()
 {
