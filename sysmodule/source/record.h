@@ -15,12 +15,8 @@ typedef enum {
 
 #undef MAKE_RECORD_HEADER
 
-#define RECORD_BUFFER_SIZE (0x100000)
-#define RECORD_FILE_WRITE_CHUNK_SIZE (0x4000)
-#define RECORD_NETWORK_SEND_CHUNK_SIZE (0x1000)
-
-extern u8 recordBuffer[RECORD_BUFFER_SIZE];
 extern u8* recordHead;
+extern u8* recordEnd;
 
 void recordInit();
 void recordExit();
@@ -28,7 +24,7 @@ void recordFlush();
 
 inline void recordEnsureSpace(u32 size)
 {
-    if (recordHead + size >= recordBuffer + RECORD_BUFFER_SIZE)
+    if (recordHead + size >= recordEnd)
         recordFlush();
 }
 

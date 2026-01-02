@@ -11,11 +11,27 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#define RECORD_BUFFER_SIZE (0x100000)
+#define RECORD_FILE_WRITE_CHUNK_SIZE (0x4000)
+#define RECORD_NETWORK_SEND_CHUNK_SIZE (0x1000)
+
 u8 recordBuffer[RECORD_BUFFER_SIZE];
+
+u8* recordBase = NULL;
 u8* recordHead = NULL;
+u8* recordEnd = NULL;
+
+Thread recordThread = NULL;
+LightEvent recordThreadFlushRequestEvent;
+LightEvent recordThreadFlushDoneEvent;
+volatile bool recordThreadShouldExit = false;
+u8* recordThreadFlushBase = NULL;
+u32 recordThreadFlushSize = 0;
 
 FILE* recordFile = NULL;
 int recordSocket = -1;
+
+void recordThreadFunc(void* arg);
 
 void recordInit()
 {
@@ -81,11 +97,56 @@ void recordInit()
 
         freeaddrinfo(res);
     }
+
+    if (config.record.threaded)
+    {
+        LightEvent_Init(&recordThreadFlushRequestEvent, RESET_ONESHOT);
+        LightEvent_Init(&recordThreadFlushDoneEvent, RESET_ONESHOT);
+        LightEvent_Signal(&recordThreadFlushDoneEvent);
+        recordThreadShouldExit = false;
+
+        s32 priority = 0x30;
+        svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
+        priority -= 1;
+        priority = priority < 0x18 ? 0x18 : priority;
+        priority = priority > 0x3F ? 0x3F : priority;
+
+        // TODO: Use core_id 2 or 3 on New3DS?
+        const s32 coreId = 3;
+
+        recordThread = threadCreate(recordThreadFunc, NULL, 0x2000, priority, coreId, false);
+
+        recordBase = recordBuffer;
+        recordHead = recordBase;
+        recordEnd = recordBase + (RECORD_BUFFER_SIZE / 2);
+    }
+    else 
+    {
+        recordBase = recordBuffer;
+        recordHead = recordBase;
+        recordEnd = recordBase + RECORD_BUFFER_SIZE;
+    }
 }
 
 void recordExit()
 {
     recordFlush();
+
+    if (recordThread)
+    {
+        // Wait for last flush to complete
+        LightEvent_Wait(&recordThreadFlushDoneEvent);
+
+        // Signal thread to exit
+        recordThreadShouldExit = true;
+        LightEvent_Signal(&recordThreadFlushRequestEvent);
+
+        // Wait for thread to exit
+        LightEvent_Wait(&recordThreadFlushDoneEvent);
+        threadJoin(recordThread, U64_MAX);
+
+        recordThread = NULL;
+    }
 
     if (recordFile)
     {
@@ -100,23 +161,17 @@ void recordExit()
     }
 }
 
-void recordFlush()
+void recordFlushData(u8* data, u32 size)
 {
-    if (recordHead == recordBuffer)
-        return;
-
-    u32 dataSize = recordHead - recordBuffer;
-
     if (recordFile)
     {
         size_t written = 0;
-        while (written < dataSize)
+        while (written < size)
         {
             size_t chunkSize = RECORD_FILE_WRITE_CHUNK_SIZE;
-            if (dataSize - written < chunkSize)
-                chunkSize = dataSize - written;
-
-            size_t result = fwrite(recordBuffer + written, 1, chunkSize, recordFile);
+            if (size - written < chunkSize)
+                chunkSize = size - written;
+            size_t result = fwrite(data + written, 1, chunkSize, recordFile);
             if (result != chunkSize)
             {
                 LOG_ERROR("Failed to write to record file");
@@ -134,13 +189,13 @@ void recordFlush()
     if (recordSocket >= 0)
     {
         size_t sent = 0;
-        while (sent < dataSize)
+        while (sent < size)
         {
             size_t chunkSize = RECORD_NETWORK_SEND_CHUNK_SIZE;
-            if (dataSize - sent < chunkSize)
-                chunkSize = dataSize - sent;
+            if (size - sent < chunkSize)
+                chunkSize = size - sent;
 
-            ssize_t result = send(recordSocket, recordBuffer + sent, chunkSize, 0);
+            ssize_t result = send(recordSocket, data + sent, chunkSize, 0);
             if (result < 0)
             {
                 LOG_ERROR("Failed to send to record socket");
@@ -153,7 +208,52 @@ void recordFlush()
         }
     }
 
-    recordHead = recordBuffer;
+    LOG_TRACE("Flushed %u bytes of recorded data", size);
+}
 
-    LOG_INFO("Flushed %lu bytes of recorded data", dataSize);
+void recordFlush()
+{
+    if (recordHead == recordBase)
+        return;
+
+    if (!recordThread)
+    {
+        recordFlushData(recordBase, recordHead - recordBase);
+        recordHead = recordBase;
+        return;
+    }
+    
+    // Wait for previous flush to complete
+    LOG_TRACE("Waiting for previous record flush to complete...");
+    LightEvent_Wait(&recordThreadFlushDoneEvent);
+
+    // Swap buffers
+    LOG_TRACE("Swapping record buffers and signaling...");
+    recordThreadFlushBase = recordBase;
+    recordThreadFlushSize = recordHead - recordBase;
+    recordBase = (recordBase == recordBuffer) ? (recordBuffer + (RECORD_BUFFER_SIZE / 2)) : recordBuffer;
+    recordHead = recordBase;
+    recordEnd = recordBase + (RECORD_BUFFER_SIZE / 2);
+
+    // Request new flush
+    LightEvent_Signal(&recordThreadFlushRequestEvent);
+}
+
+void recordThreadFunc(void* arg)
+{
+    while (true)
+    {
+		LightEvent_Wait(&recordThreadFlushRequestEvent);
+        LOG_TRACE("Record thread: Woke up for flush request");
+		if (recordThreadShouldExit)
+        {
+            LightEvent_Signal(&recordThreadFlushDoneEvent);
+            break;
+        }
+
+        LOG_TRACE("Record thread: Flushing %u bytes", recordThreadFlushSize);
+        recordFlushData(recordThreadFlushBase, recordThreadFlushSize);
+        LOG_TRACE("Record thread: Flush complete");
+        LightEvent_Signal(&recordThreadFlushDoneEvent);
+	}
 }

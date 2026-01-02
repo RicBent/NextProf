@@ -22,6 +22,7 @@ Config config = {
     .record = {
         .file = true,
         .tcp = true,
+        .threaded = false,
     },
     .profile = {
         .instructionInterval = 0x100000,
@@ -95,6 +96,7 @@ int configReadCallback(const char* section, const char* key, const char* value, 
     SECTION_START(record)
         CHECK_READ_BOOL(file)
         CHECK_READ_BOOL(tcp)
+        CHECK_READ_BOOL(threaded)
     SECTION_END
 
     SECTION_START(profile)

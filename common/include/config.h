@@ -19,6 +19,7 @@ typedef struct {
     struct {
         bool file;
         bool tcp;
+        bool threaded;
     } record;
     struct {
         s64 instructionInterval;

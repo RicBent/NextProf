@@ -25,6 +25,7 @@ Open `config.ini` to set your desired settings:
 ### Record
 - `File`: if profiling data should be written to `/nextprof` on the SD card.
 - `TCP`: if profiling data should be written to `./profile` on the host pc via TCP.
+- `Threaded`: if writes to file/TCP should be done in a separate thread. May skew results as other running threads/services may be impacted.
 
 Best only enable the recording target you need, as all options increase the time required when profiling data is flushed.
 
